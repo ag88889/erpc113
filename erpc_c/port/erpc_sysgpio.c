@@ -228,7 +228,9 @@ int gpio_close(int fd)
     return close(fd);
 }
 
-int gpio_poll(int fd, int timeout)
+int gpio_poll(int fd, int timeout)  // returns 0/1 - new pin state,
+                                    // -2 - error occured (see errno),
+                                    // -1 - timed out
 {
     int pollr;
     struct pollfd fds;
@@ -236,23 +238,22 @@ int gpio_poll(int fd, int timeout)
     char val;
 
     fds.fd = fd;
-    fds.events = POLLPRI | POLLERR;
+    fds.events = POLLIN | POLLPRI | POLLERR;
     ;
     pollr = poll(&fds, 1, timeout);
 
     if (pollr < 0)
     {
         (void)fprintf(stderr, "Could not poll gpio (%d).\r\n", errno);
-        ret = -1;
+        ret = -2;
     }
     else
     {
-        if ((fds.revents & POLLPRI) > 0)
+        if ((fds.revents & (POLLPRI | POLLIN) ) > 0)
         {
-            /* perform a dummy read to clean the events */
             lseek(fds.fd, 0, SEEK_SET);
             read(fds.fd, &val, 1);
-            ret = 1;
+            ret = val-'0';
         }
         else if ((fds.revents & POLLERR) > 0)
         {
@@ -261,7 +262,7 @@ int gpio_poll(int fd, int timeout)
         }
         else
         {
-            ret = ERPC_SYSGPIO_STATUS_SUCCESS;
+            ret = -1;
         }
     }
 
