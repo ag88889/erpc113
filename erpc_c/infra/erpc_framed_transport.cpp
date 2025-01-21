@@ -162,7 +162,13 @@ erpc_status_t FramedTransport::send(MessageBuffer *message)
     static_cast<void>(
         memcpy(&message->get()[offset], reinterpret_cast<const uint8_t *>(&h.m_crcBody), sizeof(h.m_crcBody)));
 
+#if 0 // one-step
     ret = underlyingSend(message, message->getUsed(), 0);
+#else
+    ret = underlyingSend(message, reserveHeaderSize(), 0);
+    if (ret == kErpcStatus_Success)
+        ret = underlyingSend(message, messageLength, reserveHeaderSize());
+#endif // 0
 
     return ret;
 }
