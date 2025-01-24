@@ -11,6 +11,9 @@
 
 #include "erpc_framed_transport.hpp"
 
+#define ERPC_BOARD_SPI_SLAVE_READY_USE_GPIO (1)
+#define ERPC_BOARD_SPI_INT_PIN 74 // for opiZ3
+
 /*!
  * @addtogroup spidev_master_transport
  * @{
@@ -80,7 +83,21 @@ private:
      * @retval kErpcStatus_Success Successfully sent all data.
      */
     virtual erpc_status_t underlyingSend(const uint8_t *data, uint32_t size) override;
+
+public:
+    /*!
+     * @brief
+     * @retval
+     */
+    unsigned int getSpeed(void);
+    /*!
+     * @brief
+     * @retval
+     */
+    int getGpioHandle(void);
 };
+
+void spiWaitForSlaveReadyGpio(int gpioHandle);
 
 } // namespace erpc
 
