@@ -1,4 +1,6 @@
 /*
+ * (с) jan 2025 by ag88889 (agusev88887@gmail.com)
+ *
  * Copyright 2020 NXP
  * All rights reserved.
  *
@@ -41,6 +43,7 @@ int gpio_export(int gpio)
         fd = open("/sys/class/gpio/export", O_WRONLY | O_SYNC);
         if (-1 == fd)
         {
+            int eno = errno;
             (void)fprintf(stderr, "Could not open gpio export file (%d).\r\n", errno);
             ret = -1;
         }
@@ -51,6 +54,7 @@ int gpio_export(int gpio)
             {
                 if (ret != write(fd, sysgpio, ret))
                 {
+                    int eno = errno;
                     (void)fprintf(stderr, "Could not export gpio (%d) (%d).\r\n", gpio, errno);
                     ret = -2;
                 }
@@ -228,6 +232,46 @@ int gpio_close(int fd)
     return close(fd);
 }
 
+int gpio_poll0(int fd, int timeout)
+{
+    int pollr;
+    struct pollfd fds;
+    int ret;
+    char val;
+
+    fds.fd = fd;
+    fds.events = POLLPRI | POLLERR;
+    ;
+    pollr = poll(&fds, 1, timeout);
+
+    if (pollr < 0)
+    {
+        (void)fprintf(stderr, "Could not poll gpio (%d).\r\n", errno);
+        ret = -1;
+    }
+    else
+    {
+        if ((fds.revents & POLLPRI) > 0)
+        {
+            /* perform a dummy read to clean the events */
+            lseek(fds.fd, 0, SEEK_SET);
+            read(fds.fd, &val, 1);
+            ret = 1;
+        }
+        else if ((fds.revents & POLLERR) > 0)
+        {
+            (void)fprintf(stderr, "Error while polling gpio (%d).\r\n", errno);
+            ret = -2;
+        }
+        else
+        {
+            ret = ERPC_SYSGPIO_STATUS_SUCCESS;
+        }
+    }
+
+    return ret;
+}
+
 int gpio_poll(int fd, int timeout)  // returns 0/1 - new pin state,
                                     // -2 - error occured (see errno),
                                     // -1 - timed out
@@ -251,9 +295,7 @@ int gpio_poll(int fd, int timeout)  // returns 0/1 - new pin state,
     {
         if ((fds.revents & (POLLPRI | POLLIN) ) > 0)
         {
-            lseek(fds.fd, 0, SEEK_SET);
-            read(fds.fd, &val, 1);
-            ret = val-'0';
+            return gpio_poll_val(fd);
         }
         else if ((fds.revents & POLLERR) > 0)
         {
@@ -265,6 +307,20 @@ int gpio_poll(int fd, int timeout)  // returns 0/1 - new pin state,
             ret = -1;
         }
     }
+
+    return ret;
+}
+
+int gpio_poll_val(int fd)  // returns 0/1 - new pin state,
+                           // -2 - error occured (see errno), for compatibility ret with gpio_poll()
+{
+    char val;
+    int ret;
+
+    lseek(fd, 0, SEEK_SET);
+    if (read(fd, &val, 1) < 1)
+        return -2;
+    ret = val-'0';
 
     return ret;
 }
