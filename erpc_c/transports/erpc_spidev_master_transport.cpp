@@ -15,9 +15,12 @@
 
 extern "C" {
 #include <unistd.h>
+#include <linux/gpio.h> // everything about GPIOs
 }
 
 using namespace erpc;
+
+#define __USE_SYSFS__
 
 ////////////////////////////////////////////////////////////////////////////////
 // Definitions
@@ -45,19 +48,34 @@ static volatile int s_gpioHandle = 0;
 ////////////////////////////////////////////////////////////////////////////////
 
 #ifdef ERPC_BOARD_SPI_SLAVE_READY_USE_GPIO
-static inline void SpidevMasterTransport_WaitForSlaveReadyGpio()
+void erpc::spiWaitForSlaveReadyGpio(int gpioHandle)
 {
+#ifdef __USE_SYSFS__
     for (;;)
     {
-        /*
+         /*
          * The GPIO pin has been configured to generate interrupts on edge event
          * The poll() will return whenever the interrupt was triggered
          */
-        if (gpio_poll(s_gpioHandle, -1))
-        {
-            break;
-        }
+         if (gpio_poll(gpioHandle, -1) == 0)
+         {
+             break;
+         }
     }
+#else
+    for (;;)
+    {
+         if (gpio_poll_line(gpioHandle, -1) == 0)
+         {
+             break;
+         }
+    }
+#endif
+}
+
+static inline void SpidevMasterTransport_WaitForSlaveReadyGpio()
+{
+    spiWaitForSlaveReadyGpio(s_gpioHandle);
 }
 #else
 static inline void SpidevMasterTransport_WaitForSlaveReadyMarker(int spi_fd)
@@ -133,6 +151,14 @@ erpc_status_t SpidevMasterTransport::init(void)
             status = kErpcStatus_InitFailed;
         }
     }
+    if (status == kErpcStatus_Success)
+    {
+        m_speed_Hz = spidev_get_speed(m_spidevHandle);
+        if (m_speed_Hz == 0)
+        {
+            status = kErpcStatus_InitFailed;
+        }
+    }
 
     /* Set SPI device word length */
     if (status == kErpcStatus_Success)
@@ -143,7 +169,17 @@ erpc_status_t SpidevMasterTransport::init(void)
         }
     }
 
+    /* Set SPI device msb\lsb order */
+    if (status == kErpcStatus_Success)
+    {
+        if (ERPC_SPIDEV_STATUS_SUCCESS != spidev_set_lsbmsb(m_spidevHandle,ERPC_SPIDEV_MSBFIRST))
+        {
+            status = kErpcStatus_InitFailed;
+        }
+    }
+
 #ifdef ERPC_BOARD_SPI_SLAVE_READY_USE_GPIO
+#ifdef __USE_SYSFS__
     /* Initialize the GPIO SPI_INT_PIN */
     /* Export GPIO */
     if (status == kErpcStatus_Success)
@@ -181,9 +217,29 @@ erpc_status_t SpidevMasterTransport::init(void)
             status = kErpcStatus_InitFailed;
         }
     }
+#else
+    if (status == kErpcStatus_Success)
+    {
+        s_gpioHandle = gpio_req_line(gpio_chipName,ERPC_BOARD_SPI_INT_PIN,GPIOEVENT_REQUEST_FALLING_EDGE);
+        if (s_gpioHandle < ERPC_SYSGPIO_STATUS_SUCCESS)
+        {
+            status = kErpcStatus_InitFailed;
+        }
+    }
+#endif
 #endif
 
     return status;
+}
+
+unsigned int SpidevMasterTransport::getSpeed(void)
+{
+    return m_speed_Hz;
+}
+
+int SpidevMasterTransport::getGpioHandle(void)
+{
+    return s_gpioHandle;
 }
 
 erpc_status_t SpidevMasterTransport::underlyingSend(const uint8_t *data, uint32_t size)
@@ -194,8 +250,7 @@ erpc_status_t SpidevMasterTransport::underlyingSend(const uint8_t *data, uint32_
     SpidevMasterTransport_WaitForSlaveReadyGpio();
 #endif
 
-    if (ERPC_SPIDEV_STATUS_SUCCESS !=
-        spidev_transfer(m_spidevHandle, reinterpret_cast<const unsigned char *>(data), NULL, size))
+    if (ERPC_SPIDEV_STATUS_SUCCESS != spidev_transfer(m_spidevHandle, data, NULL, size))
     {
         status = kErpcStatus_SendFailed;
     }
