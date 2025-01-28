@@ -1,6 +1,4 @@
 /*
- * (с) jan 2025 by ag88889 (agusev88887@gmail.com)
- *
  * Copyright 2020 NXP
  * All rights reserved.
  *
