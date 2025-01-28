@@ -20,8 +20,6 @@ extern "C" {
 
 using namespace erpc;
 
-#define __USE_SYSFS__
-
 ////////////////////////////////////////////////////////////////////////////////
 // Definitions
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +48,19 @@ static volatile int s_gpioHandle = 0;
 #ifdef ERPC_BOARD_SPI_SLAVE_READY_USE_GPIO
 void erpc::spiWaitForSlaveReadyGpio(int gpioHandle)
 {
+    for (;;)
+    {
+         if (gpio_poll_val(gpioHandle) == 0)
+         {
+             break;
+         }
+    }
+}
+
+#define __USE_SYSFS__
+
+static inline void SpidevMasterTransport_WaitForSlaveReadyGpio()
+{
 #ifdef __USE_SYSFS__
     for (;;)
     {
@@ -57,7 +68,7 @@ void erpc::spiWaitForSlaveReadyGpio(int gpioHandle)
          * The GPIO pin has been configured to generate interrupts on edge event
          * The poll() will return whenever the interrupt was triggered
          */
-         if (gpio_poll(gpioHandle, -1) == 0)
+         if (gpio_poll(s_gpioHandle, -1) == 0)
          {
              break;
          }
@@ -65,17 +76,12 @@ void erpc::spiWaitForSlaveReadyGpio(int gpioHandle)
 #else
     for (;;)
     {
-         if (gpio_poll_line(gpioHandle, -1) == 0)
+         if (gpio_poll_line(s_gpioHandle, -1) == 0)
          {
              break;
          }
     }
 #endif
-}
-
-static inline void SpidevMasterTransport_WaitForSlaveReadyGpio()
-{
-    spiWaitForSlaveReadyGpio(s_gpioHandle);
 }
 #else
 static inline void SpidevMasterTransport_WaitForSlaveReadyMarker(int spi_fd)
